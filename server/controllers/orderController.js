@@ -50,8 +50,46 @@ export const updateOrderStatus = async (req, res) => {
   try {
     const { orderId } = req.params;
     const { status } = req.body;
-    const order = await Order.findByIdAndUpdate(orderId, { status }, { new: true });
+
+    const order = await Order.findById(orderId);
     if (!order) return res.status(404).json({ message: 'Order not found' });
+
+    // Explicit valid state transitions
+    // Both 'PLACED' and 'PREBOOKED' can transition directly to 'READY_FOR_PICKUP'
+    const allowedTransitions = {
+      PLACED: ['READY_FOR_PICKUP', 'CANCELLED'],
+      PREBOOKED: ['READY_FOR_PICKUP', 'CANCELLED'],
+      READY_FOR_PICKUP: ['DRIVER_ASSIGNED', 'PICKED_UP', 'CANCELLED'],
+      DRIVER_ASSIGNED: ['PICKED_UP', 'IN_TRANSIT'],
+      PICKED_UP: ['IN_TRANSIT'],
+      IN_TRANSIT: ['DELIVERED']
+    };
+
+    if (allowedTransitions[order.status] && !allowedTransitions[order.status].includes(status)) {
+      return res.status(400).json({
+        message: `Invalid state transition: Cannot change status from ${order.status} to ${status}`
+      });
+    }
+
+    order.status = status;
+    if (status === 'READY_FOR_PICKUP') order.readyAt = new Date();
+    if (status === 'DELIVERED') order.deliveredAt = new Date();
+
+    await order.save();
+
+    // Trigger Socket.IO updates to clients if connected
+    const io = req.app.get('io');
+    if (io) {
+      io.to(`order_${order._id}`).emit('order_status_updated', {
+        orderId: order._id,
+        status: order.status
+      });
+
+      if (status === 'READY_FOR_PICKUP') {
+        io.emit('new_delivery_available', { orderId: order._id });
+      }
+    }
+
     res.status(200).json({ success: true, order });
   } catch (error) {
     res.status(500).json({ message: error.message });
@@ -67,6 +105,15 @@ export const acceptDelivery = async (req, res) => {
       { new: true }
     );
     if (!order) return res.status(400).json({ message: 'Delivery not available' });
+
+    const io = req.app.get('io');
+    if (io) {
+      io.to(`order_${order._id}`).emit('driver_assigned', {
+        orderId: order._id,
+        driverId: req.user.id
+      });
+    }
+
     res.status(200).json({ success: true, order });
   } catch (error) {
     res.status(500).json({ message: error.message });
@@ -82,7 +129,7 @@ export const getMyOrders = async (req, res) => {
     else if (role === 'DRIVER') filter.driver = req.user.id;
 
     const orders = await Order.find(filter)
-      .populate('product', 'name category unit')
+      .populate('product', 'name category unit pricePerUnit type')
       .populate('buyer', 'name phone address')
       .populate('farmer', 'name phone address')
       .populate('driver', 'name phone')
@@ -99,7 +146,7 @@ export const getAvailableDeliveries = async (req, res) => {
     const orders = await Order.find({ status: 'READY_FOR_PICKUP', driver: null })
       .populate('product', 'name unit')
       .populate('farmer', 'name phone address')
-      .populate('buyer', 'name phone deliveryAddress');
+      .populate('buyer', 'name phone deliveryAddress address');
 
     res.status(200).json({ success: true, orders });
   } catch (error) {
