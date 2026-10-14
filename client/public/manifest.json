@@ -1,0 +1,17 @@
+{
+  "short_name": "KisanMart",
+  "name": "KisanMart - Farm to Shop Marketplace",
+  "description": "Smart peer-to-peer agro-logistics platform connecting farmers directly to retail shops.",
+  "icons": [
+    {
+      "src": "/logo.svg",
+      "type": "image/svg+xml",
+      "sizes": "any maskable"
+    }
+  ],
+  "start_url": "/",
+  "background_color": "#ffffff",
+  "theme_color": "#065f46",
+  "display": "standalone",
+  "orientation": "portrait"
+}
