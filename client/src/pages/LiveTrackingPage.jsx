@@ -24,6 +24,14 @@ const deliveryTruckIcon = new L.Icon({
   popupAnchor: [0, -22]
 });
 
+// Safely formats string or object address: { city, state, pincode }
+const formatAddress = (addr, fallback = 'Sindhudurg, Maharashtra') => {
+  if (!addr) return fallback;
+  if (typeof addr === 'string') return addr;
+  const parts = [addr.street, addr.city, addr.state, addr.pincode].filter(Boolean);
+  return parts.length > 0 ? parts.join(', ') : fallback;
+};
+
 // Auto-center map on new coordinate arrival
 function RecenterMap({ lat, lng }) {
   const map = useMap();
@@ -38,7 +46,7 @@ function RecenterMap({ lat, lng }) {
 export default function LiveTrackingPage() {
   const { orderId } = useParams();
   const [order, setOrder] = useState(null);
-  const [coords, setCoords] = useState({ lat: 15.9042, lng: 73.8180 }); // Sawantwadi / Kudal default
+  const [coords, setCoords] = useState({ lat: 15.9042, lng: 73.8180 }); // Sawantwadi default
   const [lastPing, setLastPing] = useState(null);
   const [loading, setLoading] = useState(true);
 
@@ -65,7 +73,10 @@ export default function LiveTrackingPage() {
 
     fetchOrderDetails();
 
-    const socket = io('http://localhost:5000');
+    // Connects to Render in production, localhost in development
+    const socketServerUrl = import.meta.env.VITE_API_URL || 'http://localhost:5000';
+    const socket = io(socketServerUrl);
+
     socket.emit('join_delivery_room', orderId);
 
     socket.on('receive_location_update', (data) => {
@@ -82,14 +93,14 @@ export default function LiveTrackingPage() {
 
   if (loading) {
     return (
-      <div className="min-h-[80vh] flex items-center justify-center bg-[#F7FCF8]">
+      <div className="min-h-[80vh] flex items-center justify-center bg-slate-50">
         <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-emerald-600"></div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-[calc(100vh-80px)] bg-[#F7FCF8] p-4 sm:p-8 font-sans">
+    <div className="min-h-[calc(100vh-80px)] bg-slate-50 p-4 sm:p-8 font-sans">
       <div className="max-w-6xl mx-auto space-y-6">
         
         {/* Top Header */}
@@ -204,7 +215,7 @@ export default function LiveTrackingPage() {
                 <div className="space-y-0.5">
                   <span className="text-[10px] font-extrabold text-slate-400 uppercase block">Farm Origin (Pickup)</span>
                   <p className="text-xs font-extrabold text-slate-800">{order?.farmer?.name || 'Local Farm'}</p>
-                  <p className="text-[11px] text-slate-500">{order?.farmer?.address?.city || 'Sawantwadi, Sindhudurg'}</p>
+                  <p className="text-[11px] text-slate-500">{formatAddress(order?.farmer?.address, 'Sawantwadi, Sindhudurg')}</p>
                 </div>
               </div>
 
@@ -218,7 +229,7 @@ export default function LiveTrackingPage() {
                 <div className="space-y-0.5">
                   <span className="text-[10px] font-extrabold text-slate-400 uppercase block">Retail Drop-off</span>
                   <p className="text-xs font-extrabold text-slate-800">{order?.buyer?.name || 'Retail Shop'}</p>
-                  <p className="text-[11px] text-slate-500">{order?.deliveryAddress?.city || 'Kudal, Sindhudurg'}</p>
+                  <p className="text-[11px] text-slate-500">{formatAddress(order?.deliveryAddress || order?.buyer?.address, 'Kudal, Sindhudurg')}</p>
                 </div>
               </div>
             </div>
